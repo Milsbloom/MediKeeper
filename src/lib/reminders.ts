@@ -50,6 +50,39 @@ function notifications(): NotificationsApi | null {
 export type NotificationResponse = NotificationsModule.NotificationResponse;
 
 let setupDone = false;
+/** Android only: whether our own high-importance channel exists. */
+let channelReady = false;
+
+/**
+ * Creates the Android "Medication reminders" channel. Expo Go rejects some channel
+ * options, so fall back to the bare minimum, and if even that fails, use the default channel.
+ */
+async function createChannel(Notifications: NotificationsApi): Promise<boolean> {
+  const attempts = [
+    {
+      name: 'Medication reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      enableVibrate: true,
+      vibrationPattern: [0, 300, 200, 300],
+    },
+    { name: 'Medication reminders', importance: Notifications.AndroidImportance.HIGH },
+  ];
+  for (const options of attempts) {
+    try {
+      await Notifications.setNotificationChannelAsync(CHANNEL_ID, options);
+      return true;
+    } catch {
+      // try the next, simpler set of options
+    }
+  }
+  console.warn('Using the default notification channel for reminders.');
+  return false;
+}
+
+/** Channel to post on, or undefined to let Android use its default. */
+function channel(): { channelId?: string } {
+  return Platform.OS === 'android' && channelReady ? { channelId: CHANNEL_ID } : {};
+}
 
 /** Call once at startup: foreground display, Android channel and the Take/Snooze buttons. */
 export async function setupReminders(): Promise<void> {
@@ -66,21 +99,14 @@ export async function setupReminders(): Promise<void> {
     }),
   });
 
+  if (Platform.OS === 'android') channelReady = await createChannel(Notifications);
   try {
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-        name: 'Medication reminders',
-        importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
-        vibrationPattern: [0, 300, 200, 300],
-      });
-    }
     await Notifications.setNotificationCategoryAsync(CATEGORY_ID, [
       { identifier: ACTION_TAKE, buttonTitle: 'Take', options: { opensAppToForeground: true } },
       { identifier: ACTION_SNOOZE, buttonTitle: 'Snooze', options: { opensAppToForeground: true } },
     ]);
   } catch (e) {
-    console.warn('Could not set up reminder buttons.', e);
+    console.warn('Could not set up the Take and Snooze buttons.', e);
   }
 
   // Keep reminders in step with every change to medications or doses.
@@ -179,7 +205,7 @@ async function doSync(): Promise<void> {
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
         date: p.at,
-        channelId: CHANNEL_ID,
+        ...channel(),
       },
     });
   }
@@ -221,7 +247,7 @@ async function snooze(data: ReminderData, minutes: number) {
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
       date: new Date(Date.now() + minutes * 60_000),
-      channelId: CHANNEL_ID,
+      ...channel(),
     },
   });
 }
@@ -283,7 +309,7 @@ export async function sendTestReminder(): Promise<void> {
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
       seconds: 5,
-      channelId: CHANNEL_ID,
+      ...channel(),
     },
   });
 }
