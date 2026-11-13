@@ -68,3 +68,36 @@ test('shiftTime wraps', () => {
   assert.equal(shiftTime('23:45', 30), '00:15');
   assert.equal(shiftTime('00:00', -15), '23:45');
 });
+
+test('planReminders skips past and marked doses, adds repeats, caps', async () => {
+  const { planReminders } = await import('../src/lib/schedule.ts');
+  const med = { id: 7, schedule: { ...base, times: ['08:00', '20:00'] } };
+  const now = new Date(2026, 10, 13, 9, 0); // 13 Nov 2026, 09:00 local
+  const plan = planReminders([med], new Set(), now, { days: 2, repeatEvery: 10, repeatCount: 2, cap: 50 });
+  assert.deepEqual(
+    plan.map((p) => p.id),
+    [
+      'dose|7|2026-11-13 20:00|0',
+      'dose|7|2026-11-13 20:00|1',
+      'dose|7|2026-11-13 20:00|2',
+      'dose|7|2026-11-14 08:00|0',
+      'dose|7|2026-11-14 08:00|1',
+      'dose|7|2026-11-14 08:00|2',
+      'dose|7|2026-11-14 20:00|0',
+      'dose|7|2026-11-14 20:00|1',
+      'dose|7|2026-11-14 20:00|2',
+    ],
+  );
+  // A 08:00 dose that is still unmarked at 08:15 keeps its 08:20 repeat.
+  const early = new Date(2026, 10, 13, 8, 15);
+  const p2 = planReminders([med], new Set(), early, { days: 1, repeatEvery: 10, repeatCount: 2, cap: 50 });
+  assert.equal(p2[0].id, 'dose|7|2026-11-13 08:00|2');
+  // Marked doses get nothing.
+  const marked = new Set(['7|2026-11-13 20:00']);
+  const p3 = planReminders([med], marked, now, { days: 1, repeatEvery: 0, repeatCount: 2, cap: 50 });
+  assert.equal(p3.length, 0);
+  // Cap keeps the soonest.
+  const p4 = planReminders([med], new Set(), now, { days: 30, repeatEvery: 0, repeatCount: 0, cap: 3 });
+  assert.equal(p4.length, 3);
+  assert.equal(p4[0].slot, '2026-11-13 20:00');
+});

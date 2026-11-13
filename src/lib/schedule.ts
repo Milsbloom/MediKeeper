@@ -115,3 +115,68 @@ export function shiftTime(t: string, minutes: number): string {
   const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
+
+/** Local Date for a "YYYY-MM-DD HH:MM" slot. */
+export function slotToDate(slot: string): Date {
+  const [dateKey, time] = slot.split(' ');
+  const d = parseDateKey(dateKey);
+  const [h, m] = time.split(':').map(Number);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+export type PlanMedication = { id: number; schedule: Schedule };
+
+export type PlannedReminder = {
+  /** Stable id: "dose|<medId>|<slot>|<repeat>". */
+  id: string;
+  medicationId: number;
+  slot: string;
+  at: Date;
+  /** 0 for the first reminder, 1+ for repeats while the dose is still unmarked. */
+  repeat: number;
+};
+
+export type PlanOptions = {
+  /** How many days ahead to schedule, counting today. */
+  days: number;
+  /** Minutes between repeat reminders; 0 turns repeats off. */
+  repeatEvery: number;
+  /** How many repeats after the first reminder. */
+  repeatCount: number;
+  /** Most notifications to keep scheduled (iOS allows 64 pending in total). */
+  cap: number;
+};
+
+/**
+ * Works out which reminder notifications should be scheduled right now: every future
+ * dose time in the window that hasn't been marked, plus its repeats, soonest first.
+ */
+export function planReminders(
+  meds: PlanMedication[],
+  markedKeys: Set<string>,
+  now: Date,
+  opts: PlanOptions,
+): PlannedReminder[] {
+  const out: PlannedReminder[] = [];
+  const today = toDateKey(now);
+  const repeats = opts.repeatEvery > 0 ? opts.repeatCount : 0;
+  for (let i = 0; i < opts.days; i++) {
+    const day = parseDateKey(today);
+    day.setDate(day.getDate() + i);
+    const dateKey = toDateKey(day);
+    for (const med of meds) {
+      for (const { slot } of dosesOn(med.schedule, dateKey)) {
+        if (markedKeys.has(`${med.id}|${slot}`)) continue;
+        const base = slotToDate(slot);
+        for (let r = 0; r <= repeats; r++) {
+          const at = new Date(base.getTime() + r * opts.repeatEvery * 60_000);
+          if (at.getTime() <= now.getTime()) continue;
+          out.push({ id: `dose|${med.id}|${slot}|${r}`, medicationId: med.id, slot, at, repeat: r });
+        }
+      }
+    }
+  }
+  out.sort((a, b) => a.at.getTime() - b.at.getTime() || a.id.localeCompare(b.id));
+  return out.slice(0, opts.cap);
+}
