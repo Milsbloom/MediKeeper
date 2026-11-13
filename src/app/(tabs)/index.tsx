@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -10,6 +10,7 @@ import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
   clearDose,
+  getSettings,
   listMedications,
   logsForDay,
   onDataChange,
@@ -34,6 +35,13 @@ export default function TodayScreen() {
   const [logs, setLogs] = useState<DoseLog[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(() => toDateKey(new Date()));
+
+  // First launch: show the welcome screen once.
+  useEffect(() => {
+    getSettings().then((s) => {
+      if (!s.onboarded) router.push('/welcome');
+    });
+  }, []);
 
   const load = useCallback(async () => {
     const day = toDateKey(new Date());

@@ -38,9 +38,11 @@ export type Settings = {
   repeatEvery: number;
   /** Minutes a Snooze pushes the reminder back. */
   snoozeMinutes: number;
+  /** Has the person been through the first-launch welcome? */
+  onboarded: boolean;
 };
 
-export const DEFAULT_SETTINGS: Settings = { remindersOn: true, repeatEvery: 10, snoozeMinutes: 10 };
+export const DEFAULT_SETTINGS: Settings = { remindersOn: true, repeatEvery: 10, snoozeMinutes: 10, onboarded: false };
 
 type Data = {
   version: 1;
@@ -252,4 +254,10 @@ export async function updateSettings(patch: Partial<Settings>): Promise<void> {
 export async function markedKeysSince(dateKey: string): Promise<Set<string>> {
   const data = await load();
   return new Set(data.logs.filter((l) => l.slot >= dateKey).map((l) => `${l.medicationId}|${l.slot}`));
+}
+
+/** Every dose ever logged, oldest first. */
+export async function listAllLogs(): Promise<DoseLog[]> {
+  const data = await load();
+  return clone(data.logs).sort((a, b) => a.slot.localeCompare(b.slot));
 }
