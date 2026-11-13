@@ -1,5 +1,4 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,14 +12,13 @@ import { listMedications, type Medication } from '@/lib/db';
 import { describeSchedule } from '@/lib/schedule';
 
 export default function MedicationsScreen() {
-  const db = useSQLiteContext();
   const c = useTheme();
   const [meds, setMeds] = useState<Medication[] | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      listMedications(db).then(setMeds);
-    }, [db]),
+      listMedications().then(setMeds);
+    }, []),
   );
 
   const addButton = <Button label="Add medication" onPress={() => router.push('/med/edit')} />;

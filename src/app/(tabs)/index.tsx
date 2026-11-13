@@ -1,5 +1,4 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +13,7 @@ import {
   listMedications,
   logsForDay,
   setDoseStatus,
+  storageUnavailable,
   type DoseLog,
   type DoseStatus,
   type Medication,
@@ -28,7 +28,6 @@ function nowTime(): string {
 }
 
 export default function TodayScreen() {
-  const db = useSQLiteContext();
   const c = useTheme();
   const [meds, setMeds] = useState<Medication[]>([]);
   const [logs, setLogs] = useState<DoseLog[]>([]);
@@ -38,11 +37,11 @@ export default function TodayScreen() {
   const load = useCallback(async () => {
     const day = toDateKey(new Date());
     setToday(day);
-    const [m, l] = await Promise.all([listMedications(db), logsForDay(db, day)]);
+    const [m, l] = await Promise.all([listMedications(), logsForDay(day)]);
     setMeds(m);
     setLogs(l);
     setLoaded(true);
-  }, [db]);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,12 +69,12 @@ export default function TodayScreen() {
   const current = nowTime();
 
   async function mark(row: Row, status: DoseStatus) {
-    await setDoseStatus(db, row.med.id, row.slot, status);
+    await setDoseStatus(row.med.id, row.slot, status);
     await load();
   }
 
   async function undo(row: Row) {
-    await clearDose(db, row.med.id, row.slot);
+    await clearDose(row.med.id, row.slot);
     await load();
   }
 
@@ -83,7 +82,7 @@ export default function TodayScreen() {
     // A seconds suffix keeps two doses in the same minute from colliding.
     const d = new Date();
     const slot = `${today} ${nowTime()}:${String(d.getSeconds()).padStart(2, '0')}`;
-    await setDoseStatus(db, med.id, slot, 'taken');
+    await setDoseStatus(med.id, slot, 'taken');
     await load();
   }
 
@@ -101,6 +100,14 @@ export default function TodayScreen() {
             <ThemedText type="subtitle">Today</ThemedText>
             <ThemedText themeColor="textSecondary">{headerDate}</ThemedText>
           </View>
+
+          {loaded && storageUnavailable && (
+            <Card>
+              <ThemedText type="small" style={{ color: c.warning }}>
+                Saving isn't available on this device, so changes will be lost when the app closes.
+              </ThemedText>
+            </Card>
+          )}
 
           {loaded && meds.length === 0 && (
             <Card style={{ alignItems: 'center', paddingVertical: Spacing.five }}>

@@ -4,6 +4,7 @@
   "main": "expo-router/entry",
   "dependencies": {
     "@expo/ui": "~58.0.28",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.25",
     "expo-constants": "~58.0.16",
     "expo-device": "~58.0.5",
@@ -13,7 +14,6 @@
     "expo-linking": "~58.0.17",
     "expo-router": "~58.0.31",
     "expo-splash-screen": "~58.0.14",
-    "expo-sqlite": "~58.0.17",
     "expo-status-bar": "~58.0.5",
     "expo-symbols": "~58.0.5",
     "expo-system-ui": "~58.0.7",

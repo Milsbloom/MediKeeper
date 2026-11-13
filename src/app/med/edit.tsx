@@ -1,5 +1,4 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -69,7 +68,6 @@ function emptyMed(): MedicationInput {
 }
 
 export default function EditMedicationScreen() {
-  const db = useSQLiteContext();
   const c = useTheme();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const editingId = id ? Number(id) : null;
@@ -83,7 +81,7 @@ export default function EditMedicationScreen() {
 
   useEffect(() => {
     if (editingId === null) return;
-    getMedication(db, editingId).then((m) => {
+    getMedication(editingId).then((m) => {
       if (!m) return;
       const { id: _ignored, ...rest } = m;
       setMed(rest);
@@ -91,7 +89,7 @@ export default function EditMedicationScreen() {
       setPillsText(m.pillsLeft !== null ? String(m.pillsLeft) : '');
       setRefillText(String(m.refillAt));
     });
-  }, [db, editingId]);
+  }, [editingId]);
 
   const s = med.schedule;
   const setSchedule = (patch: Partial<MedicationInput['schedule']>) =>
@@ -142,8 +140,8 @@ export default function EditMedicationScreen() {
 
     setSaving(true);
     try {
-      if (editingId === null) await createMedication(db, input);
-      else await updateMedication(db, editingId, input);
+      if (editingId === null) await createMedication(input);
+      else await updateMedication(editingId, input);
       router.back();
     } catch (e) {
       setError('Could not save. Please try again.');
@@ -161,7 +159,7 @@ export default function EditMedicationScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await deleteMedication(db, editingId);
+          await deleteMedication(editingId);
           router.back();
         },
       },

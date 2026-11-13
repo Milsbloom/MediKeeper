@@ -1,9 +1,7 @@
-import type { SQLiteDatabase } from 'expo-sqlite';
+// On-device storage. Everything is kept as one small JSON document in AsyncStorage,
+// which ships inside Expo Go, so the app runs there without a custom build.
 
-import { toDateKey, type Schedule, type ScheduleKind } from '@/lib/schedule';
-
-export const DATABASE_NAME = 'medikeeper.db';
-const SCHEMA_VERSION = 1;
+import { toDateKey, type Schedule } from '@/lib/schedule';
 
 export type MedForm = 'pill' | 'capsule' | 'liquid' | 'injection' | 'inhaler' | 'drops' | 'other';
 
@@ -34,202 +32,177 @@ export type DoseLog = {
   loggedAt: string;
 };
 
-/** Runs once per app start inside SQLiteProvider, migrating the schema forward. */
-export async function migrate(db: SQLiteDatabase): Promise<void> {
-  await db.execAsync('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-  let version = row?.user_version ?? 0;
-
-  if (version < 1) {
-    await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS medications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        dose TEXT NOT NULL DEFAULT '',
-        form TEXT NOT NULL DEFAULT 'pill',
-        color TEXT NOT NULL DEFAULT '#3B82F6',
-        notes TEXT NOT NULL DEFAULT '',
-        pills_left INTEGER,
-        refill_at INTEGER NOT NULL DEFAULT 7,
-        schedule_kind TEXT NOT NULL DEFAULT 'daily',
-        times TEXT NOT NULL DEFAULT '[]',
-        weekdays TEXT NOT NULL DEFAULT '[]',
-        interval_days INTEGER NOT NULL DEFAULT 1,
-        start_date TEXT NOT NULL,
-        archived INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE TABLE IF NOT EXISTS dose_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        medication_id INTEGER NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
-        slot TEXT NOT NULL,
-        status TEXT NOT NULL,
-        logged_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
-        UNIQUE (medication_id, slot)
-      );
-      CREATE INDEX IF NOT EXISTS idx_dose_logs_slot ON dose_logs (slot);
-    `);
-    version = 1;
-  }
-
-  await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
-}
-
-type MedRow = {
-  id: number;
-  name: string;
-  dose: string;
-  form: MedForm;
-  color: string;
-  notes: string;
-  pills_left: number | null;
-  refill_at: number;
-  schedule_kind: ScheduleKind;
-  times: string;
-  weekdays: string;
-  interval_days: number;
-  start_date: string;
+type Data = {
+  version: 1;
+  nextId: number;
+  medications: Medication[];
+  logs: DoseLog[];
 };
 
-function parseJsonArray<T>(raw: string): T[] {
+const STORAGE_KEY = 'medikeeper.data.v1';
+
+type KeyValue = {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+};
+
+let kv: KeyValue | null = null;
+/** True when no persistent storage is available and data lives only in memory. */
+export let storageUnavailable = false;
+
+function storage(): KeyValue | null {
+  if (kv || storageUnavailable) return kv;
   try {
-    const v = JSON.parse(raw);
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
+    // Required lazily so a missing native module degrades instead of crashing the app.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    kv = require('@react-native-async-storage/async-storage').default as KeyValue;
+  } catch (e) {
+    console.warn('Persistent storage unavailable; using memory only.', e);
+    storageUnavailable = true;
   }
+  return kv;
 }
 
-function fromRow(r: MedRow): Medication {
+let cache: Data | null = null;
+let loading: Promise<Data> | null = null;
+
+function emptyData(): Data {
+  return { version: 1, nextId: 1, medications: [], logs: [] };
+}
+
+async function load(): Promise<Data> {
+  if (cache) return cache;
+  if (!loading) {
+    loading = (async () => {
+      let data = emptyData();
+      try {
+        const raw = await storage()?.getItem(STORAGE_KEY);
+        if (raw) data = { ...emptyData(), ...JSON.parse(raw) };
+      } catch (e) {
+        console.warn('Could not read saved data.', e);
+        storageUnavailable = true;
+      }
+      cache = data;
+      return data;
+    })();
+  }
+  return loading;
+}
+
+// Writes are chained so two quick taps can't save out of order.
+let writeChain: Promise<void> = Promise.resolve();
+
+async function mutate<T>(fn: (data: Data) => T): Promise<T> {
+  const data = await load();
+  const result = fn(data);
+  const snapshot = JSON.stringify(data);
+  writeChain = writeChain.then(async () => {
+    try {
+      await storage()?.setItem(STORAGE_KEY, snapshot);
+    } catch (e) {
+      console.warn('Could not save data.', e);
+      storageUnavailable = true;
+    }
+  });
+  await writeChain;
+  return result;
+}
+
+function clone<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v));
+}
+
+function nowLocal(): string {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${toDateKey(d)} ${hh}:${mm}:${ss}`;
+}
+
+function normalize(m: MedicationInput): MedicationInput {
   return {
-    id: r.id,
-    name: r.name,
-    dose: r.dose,
-    form: r.form,
-    color: r.color,
-    notes: r.notes,
-    pillsLeft: r.pills_left,
-    refillAt: r.refill_at,
-    schedule: {
-      kind: r.schedule_kind,
-      times: parseJsonArray<string>(r.times),
-      weekdays: parseJsonArray<number>(r.weekdays),
-      intervalDays: r.interval_days,
-      startDate: r.start_date,
-    },
+    ...m,
+    name: m.name.trim(),
+    dose: m.dose.trim(),
+    notes: m.notes.trim(),
+    schedule: { ...m.schedule, startDate: m.schedule.startDate || toDateKey(new Date()) },
   };
 }
 
-export async function listMedications(db: SQLiteDatabase): Promise<Medication[]> {
-  const rows = await db.getAllAsync<MedRow>(
-    'SELECT * FROM medications WHERE archived = 0 ORDER BY name COLLATE NOCASE',
-  );
-  return rows.map(fromRow);
-}
-
-export async function getMedication(db: SQLiteDatabase, id: number): Promise<Medication | null> {
-  const row = await db.getFirstAsync<MedRow>('SELECT * FROM medications WHERE id = ?', id);
-  return row ? fromRow(row) : null;
-}
-
-function params(m: MedicationInput) {
-  return [
-    m.name.trim(),
-    m.dose.trim(),
-    m.form,
-    m.color,
-    m.notes.trim(),
-    m.pillsLeft,
-    m.refillAt,
-    m.schedule.kind,
-    JSON.stringify(m.schedule.times),
-    JSON.stringify(m.schedule.weekdays),
-    m.schedule.intervalDays,
-    m.schedule.startDate || toDateKey(new Date()),
-  ];
-}
-
-export async function createMedication(db: SQLiteDatabase, m: MedicationInput): Promise<number> {
-  const result = await db.runAsync(
-    `INSERT INTO medications
-      (name, dose, form, color, notes, pills_left, refill_at, schedule_kind, times, weekdays, interval_days, start_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ...params(m),
-  );
-  return result.lastInsertRowId;
-}
-
-export async function updateMedication(db: SQLiteDatabase, id: number, m: MedicationInput): Promise<void> {
-  await db.runAsync(
-    `UPDATE medications SET
-      name = ?, dose = ?, form = ?, color = ?, notes = ?, pills_left = ?, refill_at = ?,
-      schedule_kind = ?, times = ?, weekdays = ?, interval_days = ?, start_date = ?
-     WHERE id = ?`,
-    ...params(m),
-    id,
+export async function listMedications(): Promise<Medication[]> {
+  const data = await load();
+  return clone(data.medications).sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   );
 }
 
-export async function deleteMedication(db: SQLiteDatabase, id: number): Promise<void> {
-  await db.runAsync('DELETE FROM medications WHERE id = ?', id);
+export async function getMedication(id: number): Promise<Medication | null> {
+  const data = await load();
+  const m = data.medications.find((x) => x.id === id);
+  return m ? clone(m) : null;
+}
+
+export async function createMedication(input: MedicationInput): Promise<number> {
+  return mutate((data) => {
+    const id = data.nextId++;
+    data.medications.push({ id, ...normalize(input) });
+    return id;
+  });
+}
+
+export async function updateMedication(id: number, input: MedicationInput): Promise<void> {
+  await mutate((data) => {
+    const i = data.medications.findIndex((m) => m.id === id);
+    if (i >= 0) data.medications[i] = { id, ...normalize(input) };
+  });
+}
+
+export async function deleteMedication(id: number): Promise<void> {
+  await mutate((data) => {
+    data.medications = data.medications.filter((m) => m.id !== id);
+    data.logs = data.logs.filter((l) => l.medicationId !== id);
+  });
 }
 
 /** All logs whose slot falls on the given day ("YYYY-MM-DD"). */
-export async function logsForDay(db: SQLiteDatabase, dateKey: string): Promise<DoseLog[]> {
-  return db.getAllAsync<DoseLog>(
-    `SELECT id, medication_id AS medicationId, slot, status, logged_at AS loggedAt
-     FROM dose_logs WHERE slot LIKE ? ORDER BY slot`,
-    `${dateKey}%`,
+export async function logsForDay(dateKey: string): Promise<DoseLog[]> {
+  const data = await load();
+  return clone(data.logs.filter((l) => l.slot.startsWith(dateKey))).sort((a, b) =>
+    a.slot.localeCompare(b.slot),
   );
+}
+
+function adjustPills(data: Data, medicationId: number, delta: number) {
+  const m = data.medications.find((x) => x.id === medicationId);
+  if (m && m.pillsLeft !== null) m.pillsLeft = Math.max(0, m.pillsLeft + delta);
 }
 
 /**
  * Marks a dose taken or skipped. Taking a dose uses one unit from the refill count;
  * changing a taken dose to skipped gives it back.
  */
-export async function setDoseStatus(
-  db: SQLiteDatabase,
-  medicationId: number,
-  slot: string,
-  status: DoseStatus,
-): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    const prev = await db.getFirstAsync<{ status: DoseStatus }>(
-      'SELECT status FROM dose_logs WHERE medication_id = ? AND slot = ?',
-      medicationId,
-      slot,
-    );
-    await db.runAsync(
-      `INSERT INTO dose_logs (medication_id, slot, status) VALUES (?, ?, ?)
-       ON CONFLICT (medication_id, slot) DO UPDATE SET status = excluded.status,
-         logged_at = datetime('now', 'localtime')`,
-      medicationId,
-      slot,
-      status,
-    );
-    const delta = (status === 'taken' ? -1 : 0) - (prev?.status === 'taken' ? -1 : 0);
-    if (delta !== 0) await adjustPills(db, medicationId, delta);
+export async function setDoseStatus(medicationId: number, slot: string, status: DoseStatus): Promise<void> {
+  await mutate((data) => {
+    const existing = data.logs.find((l) => l.medicationId === medicationId && l.slot === slot);
+    const wasTaken = existing?.status === 'taken';
+    if (existing) {
+      existing.status = status;
+      existing.loggedAt = nowLocal();
+    } else {
+      data.logs.push({ id: data.nextId++, medicationId, slot, status, loggedAt: nowLocal() });
+    }
+    const delta = (status === 'taken' ? -1 : 0) + (wasTaken ? 1 : 0);
+    if (delta !== 0) adjustPills(data, medicationId, delta);
   });
 }
 
 /** Removes a dose mark, returning a unit to the refill count if it had been taken. */
-export async function clearDose(db: SQLiteDatabase, medicationId: number, slot: string): Promise<void> {
-  await db.withTransactionAsync(async () => {
-    const prev = await db.getFirstAsync<{ status: DoseStatus }>(
-      'SELECT status FROM dose_logs WHERE medication_id = ? AND slot = ?',
-      medicationId,
-      slot,
-    );
-    if (!prev) return;
-    await db.runAsync('DELETE FROM dose_logs WHERE medication_id = ? AND slot = ?', medicationId, slot);
-    if (prev.status === 'taken') await adjustPills(db, medicationId, 1);
+export async function clearDose(medicationId: number, slot: string): Promise<void> {
+  await mutate((data) => {
+    const existing = data.logs.find((l) => l.medicationId === medicationId && l.slot === slot);
+    if (!existing) return;
+    data.logs = data.logs.filter((l) => l !== existing);
+    if (existing.status === 'taken') adjustPills(data, medicationId, 1);
   });
-}
-
-async function adjustPills(db: SQLiteDatabase, medicationId: number, delta: number) {
-  await db.runAsync(
-    'UPDATE medications SET pills_left = MAX(pills_left + ?, 0) WHERE id = ? AND pills_left IS NOT NULL',
-    delta,
-    medicationId,
-  );
 }
