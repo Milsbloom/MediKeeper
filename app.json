@@ -7,7 +7,10 @@
     "icon": "./assets/images/icon.png",
     "scheme": "medikeeper",
     "userInterfaceStyle": "automatic",
-    "ios": {},
+    "ios": {
+      "bundleIdentifier": "com.milsbloom.medikeeper",
+      "supportsTablet": true
+    },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#2563EB",
@@ -15,7 +18,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.milsbloom.medikeeper"
     },
     "web": {
       "output": "server",

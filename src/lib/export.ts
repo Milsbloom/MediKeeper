@@ -2,18 +2,20 @@
 
 import { Platform, Share } from 'react-native';
 
-import { listAllLogs, listMedications } from '@/lib/db';
+import { listAllLogs, listMedications, listProfiles } from '@/lib/db';
 import { csvCell, toDateKey } from '@/lib/schedule';
 
 export async function buildHistoryCsv(): Promise<string> {
-  const [meds, logs] = await Promise.all([listMedications(), listAllLogs()]);
+  const [meds, logs, profiles] = await Promise.all([listMedications(), listAllLogs(), listProfiles()]);
   const byId = new Map(meds.map((m) => [m.id, m]));
-  const rows = [['Date', 'Time', 'Medication', 'Dose', 'Status', 'Recorded at']];
+  const people = new Map(profiles.map((p) => [p.id, p.name]));
+  const rows = [['Date', 'Time', 'Person', 'Medication', 'Dose', 'Status', 'Recorded at']];
   for (const l of logs) {
     const med = byId.get(l.medicationId);
     rows.push([
       l.slot.slice(0, 10),
       l.slot.slice(11, 16),
+      med ? (people.get(med.profileId) ?? '') : '',
       med?.name ?? '(deleted)',
       med?.dose ?? '',
       l.status,

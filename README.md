@@ -27,6 +27,16 @@ Built with Expo (SDK 58), Expo Router and AsyncStorage, so it runs in Expo Go wi
 - **Welcome** screen on first launch with the medical disclaimer.
 - New app icon and splash screen.
 
+## Week 4: MediKeeper Plus
+
+- **Family profiles**: track medications for other people (a parent, a child). Each has their own list,
+  reminders ("Time for Mum's Metformin") and history, with an Everyone / per-person switcher. One person is free.
+- **Doctor report**: a PDF of current medications, adherence and missed doses for the last 30 or 90 days,
+  shared or printed from the History tab.
+- **Plus screen**: monthly, yearly and lifetime plans through RevenueCat, with restore purchases.
+  Free stays free: unlimited medications, reminders, history and CSV export.
+- Setup steps for payments: [docs/plus-setup.md](docs/plus-setup.md).
+
 ## Run it
 
 ```bash
@@ -40,7 +50,7 @@ Scan the QR code with the Expo Go app on your phone.
 
 ```bash
 npm run typecheck   # TypeScript
-npm test            # scheduling logic unit tests (Node's built-in test runner)
+npm test            # scheduling and report unit tests (Node's built-in test runner)
 ```
 
 ## Project layout
@@ -55,3 +65,6 @@ npm test            # scheduling logic unit tests (Node's built-in test runner)
 - `src/app/(tabs)/history.tsx`: calendar, adherence, streak, CSV export
 - `src/app/welcome.tsx`: first-launch welcome
 - `src/lib/export.ts`: CSV export
+- `src/lib/plus.ts`: RevenueCat purchases and Plus status
+- `src/lib/report-html.ts`, `src/lib/report.ts`: doctor report PDF
+- `src/app/plus.tsx`: Plus screen; `src/app/profile/edit.tsx`: add / edit a person

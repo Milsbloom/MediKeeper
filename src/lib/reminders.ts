@@ -8,9 +8,12 @@ import {
   getMedication,
   getSettings,
   listMedications,
+  listProfiles,
   markedKeysSince,
   onDataChange,
+  OWNER_PROFILE_ID,
   setDoseStatus,
+  type Medication,
 } from '@/lib/db';
 import { formatTime, planReminders, toDateKey } from '@/lib/schedule';
 
@@ -26,6 +29,13 @@ const MAX_SCHEDULED = 56;
 const REPEAT_COUNT = 3;
 
 type ReminderData = { medicationId: number; slot: string };
+
+/** "Metformin", or "Mum's Metformin" for someone else's medication. */
+async function reminderName(med: Medication): Promise<string> {
+  if (med.profileId === OWNER_PROFILE_ID) return med.name;
+  const profile = (await listProfiles()).find((p) => p.id === med.profileId);
+  return profile ? `${profile.name}'s ${med.name}` : med.name;
+}
 
 type NotificationsApi = typeof NotificationsModule;
 let api: NotificationsApi | null | undefined;
@@ -193,10 +203,11 @@ async function doSync(): Promise<void> {
     const med = medsById.get(p.medicationId);
     if (!med) continue;
     const time = formatTime(p.slot.slice(11, 16));
+    const name = await reminderName(med);
     await Notifications.scheduleNotificationAsync({
       identifier: p.id,
       content: {
-        title: p.repeat === 0 ? `Time for ${med.name}` : `Reminder: ${med.name} not marked yet`,
+        title: p.repeat === 0 ? `Time for ${name}` : `Reminder: ${name} not marked yet`,
         body: [med.dose, `due ${time}`].filter(Boolean).join(' · '),
         data: { medicationId: med.id, slot: p.slot } satisfies ReminderData,
         categoryIdentifier: CATEGORY_ID,
@@ -238,7 +249,7 @@ async function snooze(data: ReminderData, minutes: number) {
   await Notifications.scheduleNotificationAsync({
     identifier: `snooze|${data.medicationId}|${data.slot}`,
     content: {
-      title: `Snoozed: ${med.name}`,
+      title: `Snoozed: ${await reminderName(med)}`,
       body: [med.dose, `was due ${formatTime(data.slot.slice(11, 16))}`].filter(Boolean).join(' · '),
       data: { ...data },
       categoryIdentifier: CATEGORY_ID,
