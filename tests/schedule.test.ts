@@ -101,3 +101,36 @@ test('planReminders skips past and marked doses, adds repeats, caps', async () =
   assert.equal(p4.length, 3);
   assert.equal(p4[0].slot, '2026-11-13 20:00');
 });
+
+test('history: missed, taken, streak and adherence', async () => {
+  const { summarizeDay, historyStats, dayState, csvCell } = await import('../src/lib/schedule.ts');
+  const med = { id: 1, schedule: { ...base, times: ['08:00', '20:00'], startDate: '2026-11-10' } };
+  const now = new Date(2026, 10, 13, 12, 0); // 13 Nov, noon
+  const logs = [
+    // 10th and 11th fully taken, 12th evening missed, 13th morning taken.
+    { medicationId: 1, slot: '2026-11-10 08:00', status: 'taken' as const },
+    { medicationId: 1, slot: '2026-11-10 20:00', status: 'taken' as const },
+    { medicationId: 1, slot: '2026-11-11 08:00', status: 'taken' as const },
+    { medicationId: 1, slot: '2026-11-11 20:00', status: 'taken' as const },
+    { medicationId: 1, slot: '2026-11-12 08:00', status: 'taken' as const },
+    { medicationId: 1, slot: '2026-11-13 08:00', status: 'taken' as const },
+  ];
+  const d12 = summarizeDay([med], logs, '2026-11-12', now);
+  assert.equal(d12.taken, 1);
+  assert.equal(d12.missed, 1);
+  assert.equal(dayState(d12), 'partial');
+  const d13 = summarizeDay([med], logs, '2026-11-13', now);
+  assert.equal(d13.upcoming, 1);
+  assert.equal(dayState(d13), 'pending');
+  const stats = historyStats([med], logs, now, 30);
+  assert.equal(stats.due, 7); // 2+2+2+1 (13th evening not yet due)
+  assert.equal(stats.taken, 6);
+  assert.equal(stats.adherence, 86);
+  assert.equal(stats.streak, 0); // the 12th broke it
+
+  const allTaken = [...logs, { medicationId: 1, slot: '2026-11-12 20:00', status: 'taken' as const }];
+  assert.equal(historyStats([med], allTaken, now, 30).streak, 3); // 10th-12th; today unfinished doesn't count yet
+
+  assert.equal(csvCell('a,b'), '"a,b"');
+  assert.equal(csvCell('say "hi"'), '"say ""hi"""');
+});

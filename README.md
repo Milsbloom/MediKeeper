@@ -20,6 +20,13 @@ Built with Expo (SDK 58), Expo Router and AsyncStorage, so it runs in Expo Go wi
 - The next 4 days are scheduled (capped under iOS's 64-notification limit) and topped up each time the app opens.
 - Settings tab: reminders on/off, repeat interval, snooze length, permission status and a test reminder.
 
+## Week 3: history, export, onboarding
+
+- **History** tab: month calendar coloured by day (all taken / some missed / all missed), the doses for any day, 30-day adherence and current streak. Unmarked doses count as missed an hour after their time.
+- **Export as CSV**: every logged dose, shared via the phone's share sheet. Always free.
+- **Welcome** screen on first launch with the medical disclaimer.
+- New app icon and splash screen.
+
 ## Run it
 
 ```bash
@@ -45,3 +52,6 @@ npm test            # scheduling logic unit tests (Node's built-in test runner)
 - `src/lib/db.ts`: on-device storage, settings and dose logging
 - `src/lib/reminders.ts`: notification scheduling, Take/Snooze handling
 - `src/app/(tabs)/settings.tsx`: reminder settings
+- `src/app/(tabs)/history.tsx`: calendar, adherence, streak, CSV export
+- `src/app/welcome.tsx`: first-launch welcome
+- `src/lib/export.ts`: CSV export

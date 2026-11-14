@@ -180,3 +180,133 @@ export function planReminders(
   out.sort((a, b) => a.at.getTime() - b.at.getTime() || a.id.localeCompare(b.id));
   return out.slice(0, opts.cap);
 }
+
+// ---- History -------------------------------------------------------------
+
+export type HistoryLog = { medicationId: number; slot: string; status: 'taken' | 'skipped' };
+
+export type DoseOutcome = 'taken' | 'skipped' | 'missed' | 'upcoming';
+
+export type DayDose = { medicationId: number; slot: string; time: string; outcome: DoseOutcome };
+
+export type DaySummary = {
+  dateKey: string;
+  doses: DayDose[];
+  taken: number;
+  skipped: number;
+  missed: number;
+  upcoming: number;
+};
+
+/** How long after its time an unmarked dose counts as missed. */
+export const MISSED_AFTER_MINUTES = 60;
+
+/**
+ * Every scheduled dose on one day and what happened to it. Doses marked at a time that is
+ * no longer in the schedule (because it was edited) still count.
+ */
+export function summarizeDay(
+  meds: PlanMedication[],
+  logs: HistoryLog[],
+  dateKey: string,
+  now: Date,
+): DaySummary {
+  const logByKey = new Map(logs.map((l) => [`${l.medicationId}|${l.slot}`, l]));
+  const scheduledIds = new Set(meds.filter((m) => m.schedule.kind !== 'as_needed').map((m) => m.id));
+  const doses: DayDose[] = [];
+  const seen = new Set<string>();
+
+  for (const med of meds) {
+    for (const { slot, time } of dosesOn(med.schedule, dateKey)) {
+      const key = `${med.id}|${slot}`;
+      seen.add(key);
+      const log = logByKey.get(key);
+      let outcome: DoseOutcome;
+      if (log) outcome = log.status;
+      else
+        outcome =
+          now.getTime() - slotToDate(slot).getTime() > MISSED_AFTER_MINUTES * 60_000 ? 'missed' : 'upcoming';
+      doses.push({ medicationId: med.id, slot, time, outcome });
+    }
+  }
+  for (const l of logs) {
+    const key = `${l.medicationId}|${l.slot}`;
+    // Only "HH:MM" slots are scheduled doses; as-needed logs carry seconds and are not counted.
+    if (seen.has(key) || !l.slot.startsWith(dateKey) || l.slot.length !== 16) continue;
+    if (!scheduledIds.has(l.medicationId)) continue;
+    doses.push({ medicationId: l.medicationId, slot: l.slot, time: l.slot.slice(11), outcome: l.status });
+  }
+  doses.sort((a, b) => a.time.localeCompare(b.time) || a.medicationId - b.medicationId);
+
+  const count = (o: DoseOutcome) => doses.filter((d) => d.outcome === o).length;
+  return {
+    dateKey,
+    doses,
+    taken: count('taken'),
+    skipped: count('skipped'),
+    missed: count('missed'),
+    upcoming: count('upcoming'),
+  };
+}
+
+export type DayState = 'none' | 'perfect' | 'partial' | 'missed' | 'pending';
+
+/** One colour per calendar day. */
+export function dayState(s: DaySummary): DayState {
+  const due = s.taken + s.skipped + s.missed;
+  if (s.doses.length === 0) return 'none';
+  if (due === 0) return 'pending';
+  if (s.taken === due) return s.upcoming > 0 ? 'pending' : 'perfect';
+  if (s.taken === 0) return 'missed';
+  return 'partial';
+}
+
+export type HistoryStats = {
+  /** Share of due doses that were taken, 0 to 100, or null if nothing was due. */
+  adherence: number | null;
+  taken: number;
+  due: number;
+  /** Consecutive days, ending today or yesterday, on which every due dose was taken. */
+  streak: number;
+};
+
+/** Stats over the last `days` days, ending today. */
+export function historyStats(meds: PlanMedication[], logs: HistoryLog[], now: Date, days: number): HistoryStats {
+  const today = toDateKey(now);
+  let taken = 0;
+  let due = 0;
+  const summaries: DaySummary[] = [];
+  for (let i = 0; i < days; i++) {
+    const d = parseDateKey(today);
+    d.setDate(d.getDate() - i);
+    const s = summarizeDay(meds, logs, toDateKey(d), now);
+    summaries.push(s);
+    taken += s.taken;
+    due += s.taken + s.skipped + s.missed;
+  }
+
+  // Streak: walk back from today. Today only counts once it's complete; an unfinished
+  // today doesn't break the streak. Days with nothing due are skipped over.
+  let streak = 0;
+  for (let i = 0; i < 366; i++) {
+    const d = parseDateKey(today);
+    d.setDate(d.getDate() - i);
+    const s = i < summaries.length ? summaries[i] : summarizeDay(meds, logs, toDateKey(d), now);
+    const state = dayState(s);
+    if (state === 'perfect') streak++;
+    else if (state === 'none' || (i === 0 && state === 'pending')) continue;
+    else if (i === 0 && s.missed === 0 && s.skipped === 0) continue;
+    else break;
+    // Stop at the earliest schedule start so empty history isn't scanned for a year.
+    const earliest = meds.reduce((min, m) => (m.schedule.startDate < min ? m.schedule.startDate : min), today);
+    if (toDateKey(d) <= earliest) break;
+  }
+
+  return { adherence: due === 0 ? null : Math.round((taken / due) * 100), taken, due, streak };
+}
+
+/** CSV-safe cell. */
+export function csvCell(v: string | number | null | undefined): string {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}

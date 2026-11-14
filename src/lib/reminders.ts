@@ -1,7 +1,7 @@
 // Local reminder notifications. Nothing here talks to a server: every reminder is
 // scheduled on the phone from the medication schedules.
 
-import type * as NotificationsModule from 'expo-notifications';
+import type * as NotificationsModule from './local-notifications';
 import { Platform } from 'react-native';
 
 import {
@@ -39,7 +39,7 @@ function notifications(): NotificationsApi | null {
   if (Platform.OS === 'web') return (api = null);
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    api = require('expo-notifications') as NotificationsApi;
+    api = require('./local-notifications') as NotificationsApi;
   } catch (e) {
     console.warn('Notifications are not available in this build.', e);
     api = null;
