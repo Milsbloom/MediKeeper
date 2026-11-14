@@ -1,14 +1,16 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button, Card, Chip } from '@/components/ui';
+import { Button, Card, Chip, ColorDot } from '@/components/ui';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
 import { DEFAULT_SETTINGS, getSettings, updateSettings, type Settings } from '@/lib/db';
+import { FREE_PROFILE_LIMIT, usePlus } from '@/lib/plus';
 import {
   ensureReminderPermission,
   getReminderPermission,
@@ -31,6 +33,16 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [permission, setPermission] = useState<PermissionState>('undetermined');
   const [testSent, setTestSent] = useState(false);
+  const { profiles } = useProfiles();
+  const plus = usePlus();
+
+  function addPerson() {
+    if (profiles.length >= FREE_PROFILE_LIMIT && !plus) {
+      router.push({ pathname: '/plus', params: { reason: 'family' } });
+    } else {
+      router.push('/profile/edit');
+    }
+  }
 
   const load = useCallback(async () => {
     setSettings(await getSettings());
@@ -66,6 +78,45 @@ export default function SettingsScreen() {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <ThemedText type="subtitle">Settings</ThemedText>
+
+          <Pressable accessibilityRole="button" onPress={() => router.push('/plus')}>
+            <Card style={{ borderWidth: 2, borderColor: plus ? c.success : c.tint }}>
+              <ThemedText type="smallBold" style={{ fontSize: 17 }}>
+                {plus ? 'MediKeeper Plus is on ✓' : 'Get MediKeeper Plus'}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {plus
+                  ? 'Family profiles and doctor reports are unlocked. Thank you for supporting MediKeeper.'
+                  : 'Family profiles and a PDF report for your doctor. Everything else stays free.'}
+              </ThemedText>
+            </Card>
+          </Pressable>
+
+          <Card>
+            <ThemedText type="smallBold" style={{ fontSize: 17 }}>
+              People
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Track medications for someone you look after, each with their own list and reminders.
+            </ThemedText>
+            {profiles.map((p) => (
+              <Pressable
+                key={p.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${p.name}`}
+                onPress={() => router.push({ pathname: '/profile/edit', params: { id: String(p.id) } })}
+                style={styles.personRow}>
+                <ColorDot color={p.color} size={16} />
+                <ThemedText style={{ flex: 1 }}>{p.name}</ThemedText>
+                <ThemedText themeColor="textSecondary">Edit ›</ThemedText>
+              </Pressable>
+            ))}
+            <Button
+              label={profiles.length >= FREE_PROFILE_LIMIT && !plus ? 'Add a person (Plus)' : 'Add a person'}
+              variant="secondary"
+              onPress={addPerson}
+            />
+          </Card>
 
           {permission !== 'granted' && (
             <Card>
@@ -163,5 +214,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  personRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingVertical: 8 },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two, marginTop: Spacing.one },
 });

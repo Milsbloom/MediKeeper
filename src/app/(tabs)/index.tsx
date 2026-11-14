@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileBar } from '@/components/profile-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, Card, ColorDot } from '@/components/ui';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
 import {
   clearDose,
@@ -31,7 +33,8 @@ function nowTime(): string {
 
 export default function TodayScreen() {
   const c = useTheme();
-  const [meds, setMeds] = useState<Medication[]>([]);
+  const { profiles, filter, setFilter, byId: profilesById, multiple } = useProfiles();
+  const [allMeds, setMeds] = useState<Medication[]>([]);
   const [logs, setLogs] = useState<DoseLog[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [today, setToday] = useState(() => toDateKey(new Date()));
@@ -64,6 +67,14 @@ export default function TodayScreen() {
       };
     }, [load]),
   );
+
+  const meds = useMemo(
+    () => allMeds.filter((m) => filter === null || m.profileId === filter),
+    [allMeds, filter],
+  );
+  /** "Mum" when several people are shown together, so you know whose dose it is. */
+  const whose = (med: Medication) =>
+    multiple && filter === null ? profilesById.get(med.profileId)?.name : undefined;
 
   const { scheduled, asNeeded } = useMemo(() => {
     const logByKey = new Map(logs.map((l) => [`${l.medicationId}|${l.slot}`, l]));
@@ -117,6 +128,8 @@ export default function TodayScreen() {
             <ThemedText themeColor="textSecondary">{headerDate}</ThemedText>
           </View>
 
+          <ProfileBar profiles={profiles} filter={filter} onChange={setFilter} />
+
           {loaded && storageUnavailable && (
             <Card>
               <ThemedText type="small" style={{ color: c.warning }}>
@@ -127,7 +140,11 @@ export default function TodayScreen() {
 
           {loaded && meds.length === 0 && (
             <Card style={{ alignItems: 'center', paddingVertical: Spacing.five }}>
-              <ThemedText style={{ textAlign: 'center' }}>Nothing scheduled yet.</ThemedText>
+              <ThemedText style={{ textAlign: 'center' }}>
+                {filter !== null && allMeds.length > 0
+                  ? `No medications for ${profilesById.get(filter)?.name ?? 'this person'} yet.`
+                  : 'Nothing scheduled yet.'}
+              </ThemedText>
               <ThemedText type="small" themeColor="textSecondary" style={{ textAlign: 'center' }}>
                 Add a medication and its doses will appear here each day.
               </ThemedText>
@@ -154,6 +171,7 @@ export default function TodayScreen() {
                     </ThemedText>
                     <ThemedText type="small" style={{ color: late ? c.warning : c.textSecondary }}>
                       {formatTime(row.time)}
+                      {whose(row.med) ? ` · ${whose(row.med)}` : ''}
                       {late ? ' · not marked yet' : ''}
                     </ThemedText>
                   </View>
@@ -194,6 +212,7 @@ export default function TodayScreen() {
                       {med.dose ? <ThemedText themeColor="textSecondary"> · {med.dose}</ThemedText> : null}
                     </ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
+                      {whose(med) ? `${whose(med)} · ` : ''}
                       {taken.length === 0
                         ? 'None taken today'
                         : `Taken today at ${taken.map((l) => formatTime(l.slot.slice(11, 16))).join(', ')}`}

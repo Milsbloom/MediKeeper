@@ -1,15 +1,19 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileBar } from '@/components/profile-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button, Card, ColorDot } from '@/components/ui';
+import { Button, Card, Chip, ColorDot } from '@/components/ui';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
 import { listAllLogs, listMedications, onDataChange, type DoseLog, type Medication } from '@/lib/db';
 import { shareHistoryCsv } from '@/lib/export';
+import { usePlus } from '@/lib/plus';
+import { REPORT_PERIODS, shareDoctorReport } from '@/lib/report';
 import {
   dayState,
   formatTime,
@@ -24,8 +28,23 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export default function HistoryScreen() {
   const c = useTheme();
-  const [meds, setMeds] = useState<Medication[]>([]);
-  const [logs, setLogs] = useState<DoseLog[]>([]);
+  const { profiles, filter, setFilter, byId: profilesById, multiple } = useProfiles();
+  const plus = usePlus();
+  const [allMeds, setMeds] = useState<Medication[]>([]);
+  const [allLogs, setLogs] = useState<DoseLog[]>([]);
+  const [reportDays, setReportDays] = useState<number>(REPORT_PERIODS[0]);
+  const [reportFor, setReportFor] = useState<number | null>(null);
+  const [making, setMaking] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  // Everything below shows the selected person only (or everyone).
+  const meds = useMemo(() => allMeds.filter((m) => filter === null || m.profileId === filter), [allMeds, filter]);
+  const logs = useMemo(() => {
+    const ids = new Set(meds.map((m) => m.id));
+    return allLogs.filter((l) => ids.has(l.medicationId));
+  }, [allLogs, meds]);
+  // A report is about one person: the one selected, or the only/first one.
+  const reportPerson = filter ?? reportFor ?? profiles[0]?.id ?? 0;
   const [month, setMonth] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -92,6 +111,23 @@ export default function HistoryScreen() {
     day: 'numeric',
   });
 
+  async function makeReport() {
+    if (!plus) {
+      router.push({ pathname: '/plus', params: { reason: 'report' } });
+      return;
+    }
+    setMaking(true);
+    setReportError(null);
+    try {
+      await shareDoctorReport(reportPerson, reportDays);
+    } catch (e) {
+      console.warn(e);
+      setReportError("Couldn't make the report. Please try again.");
+    } finally {
+      setMaking(false);
+    }
+  }
+
   async function exportCsv() {
     setExporting(true);
     try {
@@ -106,6 +142,7 @@ export default function HistoryScreen() {
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ScrollView contentContainerStyle={styles.scroll}>
           <ThemedText type="subtitle">History</ThemedText>
+          <ProfileBar profiles={profiles} filter={filter} onChange={setFilter} />
 
           <View style={styles.statsRow}>
             <Card style={styles.stat}>
@@ -229,6 +266,39 @@ export default function HistoryScreen() {
 
           <Card>
             <ThemedText type="smallBold" style={{ fontSize: 17 }}>
+              Report for your doctor{plus ? '' : ' (Plus)'}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              A PDF of current medications, doses taken and missed, ready to share or print before an appointment.
+            </ThemedText>
+            {multiple && filter === null && (
+              <View style={styles.chips}>
+                {profiles.map((p) => (
+                  <Chip key={p.id} label={p.name} selected={reportPerson === p.id} onPress={() => setReportFor(p.id)} />
+                ))}
+              </View>
+            )}
+            <View style={styles.chips}>
+              {REPORT_PERIODS.map((d) => (
+                <Chip key={d} label={`Last ${d} days`} selected={reportDays === d} onPress={() => setReportDays(d)} />
+              ))}
+            </View>
+            <Button
+              label={
+                making
+                  ? 'Making the report…'
+                  : plus
+                    ? `Create PDF${multiple ? ` for ${profilesById.get(reportPerson)?.name ?? ''}` : ''}`
+                    : 'Unlock with Plus'
+              }
+              disabled={making || (plus === true && !allMeds.some((m) => m.profileId === reportPerson))}
+              onPress={makeReport}
+            />
+            {reportError && <ThemedText type="small" style={{ color: c.danger }}>{reportError}</ThemedText>}
+          </Card>
+
+          <Card>
+            <ThemedText type="smallBold" style={{ fontSize: 17 }}>
               Export your history
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
@@ -237,7 +307,7 @@ export default function HistoryScreen() {
             <Button
               label={exporting ? 'Preparing…' : 'Export as CSV'}
               variant="secondary"
-              disabled={exporting || logs.length === 0}
+              disabled={exporting || allLogs.length === 0}
               onPress={exportCsv}
             />
           </Card>
@@ -276,5 +346,6 @@ const styles = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three, marginTop: Spacing.one },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   doseRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 4 },
 });

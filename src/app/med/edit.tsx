@@ -21,7 +21,11 @@ import {
   createMedication,
   deleteMedication,
   getMedication,
+  getSettings,
+  listProfiles,
+  OWNER_PROFILE_ID,
   updateMedication,
+  type Profile,
   type MedForm,
   type MedicationInput,
 } from '@/lib/db';
@@ -51,6 +55,7 @@ const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 
 function emptyMed(): MedicationInput {
   return {
+    profileId: OWNER_PROFILE_ID,
     name: '',
     dose: '',
     form: 'pill',
@@ -79,6 +84,16 @@ export default function EditMedicationScreen() {
   const [refillText, setRefillText] = useState('7');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+
+  useEffect(() => {
+    listProfiles().then(setProfiles);
+    if (editingId !== null) return;
+    // A new medication belongs to whoever the list is showing.
+    getSettings().then((st) => {
+      if (st.profileFilter !== null) setMed((m) => ({ ...m, profileId: st.profileFilter! }));
+    });
+  }, [editingId]);
 
   useEffect(() => {
     if (editingId === null) return;
@@ -188,6 +203,21 @@ export default function EditMedicationScreen() {
               autoFocus={editingId === null}
             />
           </Section>
+
+          {profiles.length > 1 && (
+            <Section title="Who takes it">
+              <View style={styles.wrap}>
+                {profiles.map((p) => (
+                  <Chip
+                    key={p.id}
+                    label={p.name}
+                    selected={med.profileId === p.id}
+                    onPress={() => setMed((m) => ({ ...m, profileId: p.id }))}
+                  />
+                ))}
+              </View>
+            </Section>
+          )}
 
           <Section title="Dose">
             <TextInput

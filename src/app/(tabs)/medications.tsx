@@ -3,17 +3,21 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ProfileBar } from '@/components/profile-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, Card, ColorDot } from '@/components/ui';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
 import { listMedications, type Medication } from '@/lib/db';
 import { describeSchedule } from '@/lib/schedule';
 
 export default function MedicationsScreen() {
   const c = useTheme();
-  const [meds, setMeds] = useState<Medication[] | null>(null);
+  const { profiles, filter, setFilter, byId, multiple } = useProfiles();
+  const [allMeds, setMeds] = useState<Medication[] | null>(null);
+  const meds = allMeds && allMeds.filter((m) => filter === null || m.profileId === filter);
 
   useFocusEffect(
     useCallback(() => {
@@ -27,6 +31,7 @@ export default function MedicationsScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView edges={['top']} style={styles.safeArea}>
         <ThemedText type="subtitle">Medications</ThemedText>
+        <ProfileBar profiles={profiles} filter={filter} onChange={setFilter} />
         <FlatList
           data={meds ?? []}
           keyExtractor={(m) => String(m.id)}
@@ -56,6 +61,7 @@ export default function MedicationsScreen() {
                       {item.dose ? <ThemedText themeColor="textSecondary"> · {item.dose}</ThemedText> : null}
                     </ThemedText>
                     <ThemedText type="small" themeColor="textSecondary">
+                      {multiple && filter === null ? `${byId.get(item.profileId)?.name ?? ''} · ` : ''}
                       {describeSchedule(item.schedule)}
                     </ThemedText>
                     {item.pillsLeft !== null && (
