@@ -32,12 +32,32 @@ export type DoseLog = {
   loggedAt: string;
 };
 
+export type Settings = {
+  remindersOn: boolean;
+  /** Minutes between repeat reminders while a dose is unmarked; 0 = no repeats. */
+  repeatEvery: number;
+  /** Minutes a Snooze pushes the reminder back. */
+  snoozeMinutes: number;
+};
+
+export const DEFAULT_SETTINGS: Settings = { remindersOn: true, repeatEvery: 10, snoozeMinutes: 10 };
+
 type Data = {
   version: 1;
   nextId: number;
   medications: Medication[];
   logs: DoseLog[];
+  settings: Settings;
 };
+
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+/** Called after every saved change, so screens and reminders can refresh. */
+export function onDataChange(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
 
 const STORAGE_KEY = 'medikeeper.data.v1';
 
@@ -67,7 +87,7 @@ let cache: Data | null = null;
 let loading: Promise<Data> | null = null;
 
 function emptyData(): Data {
-  return { version: 1, nextId: 1, medications: [], logs: [] };
+  return { version: 1, nextId: 1, medications: [], logs: [], settings: { ...DEFAULT_SETTINGS } };
 }
 
 async function load(): Promise<Data> {
@@ -77,7 +97,10 @@ async function load(): Promise<Data> {
       let data = emptyData();
       try {
         const raw = await storage()?.getItem(STORAGE_KEY);
-        if (raw) data = { ...emptyData(), ...JSON.parse(raw) };
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          data = { ...emptyData(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } };
+        }
       } catch (e) {
         console.warn('Could not read saved data.', e);
         storageUnavailable = true;
@@ -105,6 +128,13 @@ async function mutate<T>(fn: (data: Data) => T): Promise<T> {
     }
   });
   await writeChain;
+  listeners.forEach((l) => {
+    try {
+      l();
+    } catch (e) {
+      console.warn(e);
+    }
+  });
   return result;
 }
 
@@ -205,4 +235,21 @@ export async function clearDose(medicationId: number, slot: string): Promise<voi
     data.logs = data.logs.filter((l) => l !== existing);
     if (existing.status === 'taken') adjustPills(data, medicationId, 1);
   });
+}
+
+export async function getSettings(): Promise<Settings> {
+  const data = await load();
+  return { ...data.settings };
+}
+
+export async function updateSettings(patch: Partial<Settings>): Promise<void> {
+  await mutate((data) => {
+    data.settings = { ...data.settings, ...patch };
+  });
+}
+
+/** "medId|slot" keys for every dose marked on or after the given day. */
+export async function markedKeysSince(dateKey: string): Promise<Set<string>> {
+  const data = await load();
+  return new Set(data.logs.filter((l) => l.slot >= dateKey).map((l) => `${l.medicationId}|${l.slot}`));
 }

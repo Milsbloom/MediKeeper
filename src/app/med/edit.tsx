@@ -25,6 +25,7 @@ import {
   type MedForm,
   type MedicationInput,
 } from '@/lib/db';
+import { ensureReminderPermission } from '@/lib/reminders';
 import { formatTime, shiftTime, sortTimes, toDateKey, validateSchedule, type ScheduleKind } from '@/lib/schedule';
 
 const FORMS: { value: MedForm; label: string }[] = [
@@ -140,7 +141,11 @@ export default function EditMedicationScreen() {
 
     setSaving(true);
     try {
-      if (editingId === null) await createMedication(input);
+      if (editingId === null) {
+        await createMedication(input);
+        // Ask for notification permission the first time it's actually needed.
+        if (input.schedule.kind !== 'as_needed') await ensureReminderPermission().catch(() => false);
+      }
       else await updateMedication(editingId, input);
       router.back();
     } catch (e) {

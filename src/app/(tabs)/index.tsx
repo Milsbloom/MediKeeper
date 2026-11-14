@@ -12,6 +12,7 @@ import {
   clearDose,
   listMedications,
   logsForDay,
+  onDataChange,
   setDoseStatus,
   storageUnavailable,
   type DoseLog,
@@ -46,6 +47,13 @@ export default function TodayScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      // Refresh when a dose is marked from a notification button while this screen is open.
+      const unsubscribe = onDataChange(() => {
+        void load();
+      });
+      return () => {
+        unsubscribe();
+      };
     }, [load]),
   );
 
