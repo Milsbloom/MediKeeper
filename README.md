@@ -37,6 +37,13 @@ Built with Expo (SDK 58), Expo Router and AsyncStorage, so it runs in Expo Go wi
   Free stays free: unlimited medications, reminders, history and CSV export.
 - Setup steps for payments: [docs/plus-setup.md](docs/plus-setup.md).
 
+## Week 5: launch
+
+- On-time reminders on Android 12+ (asks for "Alarms & reminders" so Android doesn't delay them).
+- Privacy policy, terms of use, and links to them in Settings and on the Plus screen.
+- Store listing text, screenshots and feature graphic (`store-assets/`).
+- Step-by-step launch guide: [docs/launch-guide.md](docs/launch-guide.md).
+
 ## Run it
 
 ```bash

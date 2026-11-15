@@ -146,6 +146,42 @@ export async function ensureReminderPermission(): Promise<boolean> {
   return asked.granted;
 }
 
+/**
+ * Android 12+ only fires reminders exactly on time when "Alarms & reminders" is allowed for the
+ * app; otherwise Android may delay them by several minutes. 'unneeded' on iOS and older Android.
+ */
+export async function getOnTimeState(): Promise<'granted' | 'denied' | 'unneeded'> {
+  const Notifications = notifications();
+  if (!Notifications || Platform.OS !== 'android' || (Platform.Version as number) < 31) return 'unneeded';
+  try {
+    const p = await Notifications.getExactAlarmPermissionsAsync();
+    return p.granted ? 'granted' : 'denied';
+  } catch {
+    return 'unneeded';
+  }
+}
+
+/** Opens Android's "Alarms & reminders" setting for MediKeeper. */
+export async function requestOnTimeReminders(): Promise<boolean> {
+  const Notifications = notifications();
+  if (!Notifications) return false;
+  try {
+    const p = await Notifications.requestExactAlarmPermissionsAsync();
+    if (p.granted) {
+      // Reminders already scheduled were set as inexact; schedule them again as exact alarms.
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const n of scheduled) {
+        if (n.identifier.startsWith('dose|')) await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+      await syncReminders();
+    }
+    return p.granted;
+  } catch (e) {
+    console.warn('Could not open the alarms setting.', e);
+    return false;
+  }
+}
+
 let syncChain: Promise<void> = Promise.resolve();
 
 /**
