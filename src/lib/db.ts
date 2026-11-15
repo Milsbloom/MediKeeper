@@ -5,8 +5,17 @@ import { toDateKey, type Schedule } from '@/lib/schedule';
 
 export type MedForm = 'pill' | 'capsule' | 'liquid' | 'injection' | 'inhaler' | 'drops' | 'other';
 
+/** A person whose medications are tracked: you, or someone you look after. */
+export type Profile = {
+  id: number;
+  name: string;
+  color: string;
+};
+
 export type Medication = {
   id: number;
+  /** The person who takes it. */
+  profileId: number;
   name: string;
   dose: string;
   form: MedForm;
@@ -40,13 +49,29 @@ export type Settings = {
   snoozeMinutes: number;
   /** Has the person been through the first-launch welcome? */
   onboarded: boolean;
+  /** Which person's medications the screens show; null shows everyone. */
+  profileFilter: number | null;
+  /** Last known MediKeeper Plus status, so Plus keeps working offline. */
+  plusCached: boolean;
 };
 
-export const DEFAULT_SETTINGS: Settings = { remindersOn: true, repeatEvery: 10, snoozeMinutes: 10, onboarded: false };
+export const DEFAULT_SETTINGS: Settings = {
+  remindersOn: true,
+  repeatEvery: 10,
+  snoozeMinutes: 10,
+  onboarded: false,
+  profileFilter: null,
+  plusCached: false,
+};
+
+/** The first profile, created for everyone. It can be renamed but not deleted. */
+export const OWNER_PROFILE_ID = 0;
+export const PROFILE_COLORS = ['#2563EB', '#DB2777', '#059669', '#D97706', '#7C3AED', '#0891B2'];
 
 type Data = {
   version: 1;
   nextId: number;
+  profiles: Profile[];
   medications: Medication[];
   logs: DoseLog[];
   settings: Settings;
@@ -89,7 +114,29 @@ let cache: Data | null = null;
 let loading: Promise<Data> | null = null;
 
 function emptyData(): Data {
-  return { version: 1, nextId: 1, medications: [], logs: [], settings: { ...DEFAULT_SETTINGS } };
+  return {
+    version: 1,
+    nextId: 1,
+    profiles: [{ id: OWNER_PROFILE_ID, name: 'Me', color: PROFILE_COLORS[0] }],
+    medications: [],
+    logs: [],
+    settings: { ...DEFAULT_SETTINGS },
+  };
+}
+
+/** Brings data saved by an older version up to date. */
+function migrate(data: Data): Data {
+  if (!Array.isArray(data.profiles) || data.profiles.length === 0) {
+    data.profiles = [{ id: OWNER_PROFILE_ID, name: 'Me', color: PROFILE_COLORS[0] }];
+  }
+  const ids = new Set(data.profiles.map((p) => p.id));
+  for (const m of data.medications) {
+    if (m.profileId == null || !ids.has(m.profileId)) m.profileId = data.profiles[0].id;
+  }
+  if (data.settings.profileFilter !== null && !ids.has(data.settings.profileFilter)) {
+    data.settings.profileFilter = null;
+  }
+  return data;
 }
 
 async function load(): Promise<Data> {
@@ -101,7 +148,7 @@ async function load(): Promise<Data> {
         const raw = await storage()?.getItem(STORAGE_KEY);
         if (raw) {
           const parsed = JSON.parse(raw);
-          data = { ...emptyData(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } };
+          data = migrate({ ...emptyData(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } });
         }
       } catch (e) {
         console.warn('Could not read saved data.', e);
@@ -162,9 +209,10 @@ function normalize(m: MedicationInput): MedicationInput {
   };
 }
 
-export async function listMedications(): Promise<Medication[]> {
+/** Medications, all of them or just one person's. */
+export async function listMedications(profileId: number | null = null): Promise<Medication[]> {
   const data = await load();
-  return clone(data.medications).sort((a, b) =>
+  return clone(data.medications.filter((m) => profileId === null || m.profileId === profileId)).sort((a, b) =>
     a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
   );
 }
@@ -260,4 +308,41 @@ export async function markedKeysSince(dateKey: string): Promise<Set<string>> {
 export async function listAllLogs(): Promise<DoseLog[]> {
   const data = await load();
   return clone(data.logs).sort((a, b) => a.slot.localeCompare(b.slot));
+}
+
+// ---- Profiles (family members) ----
+
+export async function listProfiles(): Promise<Profile[]> {
+  const data = await load();
+  return clone(data.profiles);
+}
+
+export async function createProfile(name: string, color: string): Promise<number> {
+  return mutate((data) => {
+    const id = data.nextId++;
+    data.profiles.push({ id, name: name.trim(), color });
+    return id;
+  });
+}
+
+export async function updateProfile(id: number, name: string, color: string): Promise<void> {
+  await mutate((data) => {
+    const p = data.profiles.find((x) => x.id === id);
+    if (p) {
+      p.name = name.trim();
+      p.color = color;
+    }
+  });
+}
+
+/** Removes a person with their medications and dose history. The first profile can't be removed. */
+export async function deleteProfile(id: number): Promise<void> {
+  if (id === OWNER_PROFILE_ID) return;
+  await mutate((data) => {
+    const medIds = new Set(data.medications.filter((m) => m.profileId === id).map((m) => m.id));
+    data.profiles = data.profiles.filter((p) => p.id !== id);
+    data.medications = data.medications.filter((m) => !medIds.has(m.id));
+    data.logs = data.logs.filter((l) => !medIds.has(l.medicationId));
+    if (data.settings.profileFilter === id) data.settings.profileFilter = null;
+  });
 }

@@ -10,6 +10,7 @@ import {
   takeLaunchResponse,
   type NotificationResponse,
 } from '@/lib/reminders';
+import { refreshPlus } from '@/lib/plus';
 
 function useReminders() {
   useEffect(() => {
@@ -48,11 +49,17 @@ function useReminders() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   useReminders();
+  useEffect(() => {
+    // Check Plus status once at launch; it works offline from the saved status.
+    void refreshPlus();
+  }, []);
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="med/edit" options={{ presentation: 'modal', title: 'Medication' }} />
+        <Stack.Screen name="profile/edit" options={{ presentation: 'modal', title: 'Person' }} />
+        <Stack.Screen name="plus" options={{ presentation: 'modal', title: 'MediKeeper Plus' }} />
         <Stack.Screen
           name="welcome"
           options={{ presentation: 'fullScreenModal', headerShown: false, gestureEnabled: false }}
