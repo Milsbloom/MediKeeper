@@ -3,7 +3,7 @@
 Do these in order. Google Play comes first because it's cheaper and you test on Android.
 Everything runs from your Windows PC in Git Bash; no Mac is needed, even for iPhone.
 
-Before you start, replace `chris@chanzotech.com` in `docs/privacy.md` and `docs/terms.md` with your support email.
+Support email used in the privacy policy, terms and store listings: chris@chanzotech.com.
 
 ## 1. One-time EAS setup (Expo's build service, free tier is enough)
 
