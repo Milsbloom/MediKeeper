@@ -45,7 +45,7 @@ MediKeeper is a reminder and tracking tool. It doesn't give medical advice and d
 ```
 
 **Category**: Medical · **Tags**: medication reminder, pill tracker, health
-**Contact email**: your support email · **Privacy policy URL**: https://github.com/Milsbloom/MediKeeper/blob/main/docs/privacy.md
+**Contact email**: chris@chanzotech.com · **Privacy policy URL**: https://github.com/Milsbloom/MediKeeper/blob/main/docs/privacy.md
 
 ### Data safety form
 - Does your app collect or share user data? **Yes** (only for purchases).

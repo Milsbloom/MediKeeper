@@ -46,4 +46,4 @@ We may update these terms. The current version is always at this address.
 
 ## Contact
 
-CONTACT_EMAIL
+chris@chanzotech.com
