@@ -1,10 +1,10 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button, ColorDot } from '@/components/ui';
+import { Button, ColorDot, FieldLabel, TextField } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import {
@@ -85,20 +85,14 @@ export default function EditProfileScreen() {
     );
   }
 
-  const inputStyle = [styles.input, { color: c.text, backgroundColor: c.backgroundElement, borderColor: c.border }];
-
   return (
     <ThemedView style={{ flex: 1 }}>
       <Stack.Screen options={{ title: editingId === null ? 'Add a person' : 'Edit person' }} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={{ gap: Spacing.two }}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Name
-          </ThemedText>
-          <TextInput
-            style={inputStyle}
+          <FieldLabel>Name</FieldLabel>
+          <TextField
             placeholder="e.g. Mum"
-            placeholderTextColor={c.textSecondary}
             value={name}
             onChangeText={setName}
             autoFocus={editingId === null}
@@ -107,9 +101,7 @@ export default function EditProfileScreen() {
         </View>
 
         <View style={{ gap: Spacing.two }}>
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            Colour
-          </ThemedText>
+          <FieldLabel>Colour</FieldLabel>
           <View style={styles.wrap}>
             {PROFILE_COLORS.map((col) => (
               <Pressable
@@ -118,15 +110,15 @@ export default function EditProfileScreen() {
                 accessibilityLabel={`Colour ${col}`}
                 accessibilityState={{ selected: color === col }}
                 onPress={() => setColor(col)}
-                style={[styles.swatch, { borderColor: color === col ? c.text : 'transparent' }]}>
-                <ColorDot color={col} size={28} />
+                style={[styles.swatch, { borderColor: color === col ? c.tint : 'transparent' }]}>
+                <ColorDot color={col} size={40} />
               </Pressable>
             ))}
           </View>
         </View>
 
         {error && <ThemedText style={{ color: c.danger }}>{error}</ThemedText>}
-        <Button label={saving ? 'Saving…' : 'Save'} onPress={save} disabled={saving} />
+        <Button label={saving ? 'Saving…' : 'Save'} size="large" onPress={save} disabled={saving} />
         {editingId !== null && editingId !== OWNER_PROFILE_ID && (
           <Button label="Remove this person" variant="danger" onPress={confirmDelete} />
         )}
@@ -136,8 +128,7 @@ export default function EditProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: Spacing.three, gap: Spacing.four },
-  input: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  scroll: { paddingHorizontal: 20, paddingTop: Spacing.three, gap: 20 },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   swatch: { padding: 3, borderRadius: 999, borderWidth: 2 },
 });

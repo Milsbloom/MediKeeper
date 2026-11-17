@@ -66,7 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
 
 /** The first profile, created for everyone. It can be renamed but not deleted. */
 export const OWNER_PROFILE_ID = 0;
-export const PROFILE_COLORS = ['#2563EB', '#DB2777', '#059669', '#D97706', '#7C3AED', '#0891B2'];
+export const PROFILE_COLORS = ['#1E5B4A', '#E27D60', '#5B9BD5', '#E8B04A', '#B58DD3', '#9BC184'];
 
 type Data = {
   version: 1;
