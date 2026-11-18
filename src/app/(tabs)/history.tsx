@@ -2,12 +2,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 
 import { ProfileBar } from '@/components/profile-bar';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Button, Card, Chip, ColorDot } from '@/components/ui';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { Button, Card, Chip, ListGroup, ListRow, StatusPill } from '@/components/ui';
+import { BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
 import { listAllLogs, listMedications, onDataChange, type DoseLog, type Medication } from '@/lib/db';
@@ -24,7 +25,18 @@ import {
   type DoseOutcome,
 } from '@/lib/schedule';
 
-const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+/** A calendar day's colour. "skipped" is a day where nothing was taken but nothing was missed either. */
+type CellState = DayState | 'skipped';
+
+function Chevron({ dir, color }: { dir: 'left' | 'right'; color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <Path d={dir === 'left' ? 'M15 5l-7 7 7 7' : 'M9 5l7 7-7 7'} />
+    </Svg>
+  );
+}
 
 export default function HistoryScreen() {
   const c = useTheme();
@@ -75,12 +87,18 @@ export default function HistoryScreen() {
   const stats = useMemo(() => historyStats(meds, logs, new Date(), 30), [meds, logs]);
 
   const days = useMemo(() => {
-    const first = month.getDay();
+    // Weeks start on Monday, as in the design.
+    const first = (month.getDay() + 6) % 7;
     const count = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-    const cells: ({ dateKey: string; day: number; state: DayState } | null)[] = Array(first).fill(null);
+    const cells: ({ dateKey: string; day: number; state: CellState } | null)[] = Array(first).fill(null);
     for (let d = 1; d <= count; d++) {
       const dateKey = toDateKey(new Date(month.getFullYear(), month.getMonth(), d));
-      const state = dateKey > today ? 'none' : dayState(summarizeDay(meds, logs, dateKey, new Date()));
+      let state: CellState = 'none';
+      if (dateKey <= today) {
+        const summary = summarizeDay(meds, logs, dateKey, new Date());
+        state = dayState(summary);
+        if (state === 'missed' && summary.missed === 0) state = 'skipped';
+      }
       cells.push({ dateKey, day: d, state });
     }
     return cells;
@@ -89,18 +107,19 @@ export default function HistoryScreen() {
   const daySummary = useMemo(() => summarizeDay(meds, logs, selected, new Date()), [meds, logs, selected]);
   const medsById = new Map(meds.map((m) => [m.id, m]));
 
-  const stateColor: Record<DayState, string> = {
-    perfect: c.success,
-    partial: c.warning,
-    missed: c.danger,
-    pending: c.textSecondary,
-    none: 'transparent',
+  const cellLook: Record<CellState, [string, string]> = {
+    perfect: [c.tintSoft, c.success],
+    partial: [c.warningSoft, c.warning],
+    missed: [c.dangerSoft, c.danger],
+    skipped: [c.stone, c.textSecondary],
+    pending: ['transparent', c.text],
+    none: ['transparent', c.textSecondary],
   };
-  const outcomeLabel: Record<DoseOutcome, { text: string; color: string }> = {
-    taken: { text: 'Taken', color: c.success },
-    skipped: { text: 'Skipped', color: c.textSecondary },
-    missed: { text: 'Missed', color: c.danger },
-    upcoming: { text: 'Not yet', color: c.textSecondary },
+  const outcomeLabel: Record<DoseOutcome, { text: string; tone: 'taken' | 'due' | 'missed' | 'skipped' }> = {
+    taken: { text: 'Taken', tone: 'taken' },
+    skipped: { text: 'Skipped', tone: 'skipped' },
+    missed: { text: 'Missed', tone: 'missed' },
+    upcoming: { text: 'Not yet', tone: 'due' },
   };
 
   const isCurrentMonth = month.getFullYear() === now.getFullYear() && month.getMonth() === now.getMonth();
@@ -144,78 +163,78 @@ export default function HistoryScreen() {
           <ThemedText type="subtitle">History</ThemedText>
           <ProfileBar profiles={profiles} filter={filter} onChange={setFilter} />
 
-          <View style={styles.statsRow}>
-            <Card style={styles.stat}>
-              <ThemedText style={styles.statValue}>{stats.adherence === null ? '–' : `${stats.adherence}%`}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                taken, last 30 days
-              </ThemedText>
-            </Card>
-            <Card style={styles.stat}>
-              <ThemedText style={styles.statValue}>{stats.streak}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {stats.streak === 1 ? 'day' : 'days'} in a row
-              </ThemedText>
-            </Card>
+          <View style={[styles.stats, { backgroundColor: c.backgroundElement, borderColor: c.border }]}>
+            {(
+              [
+                [String(stats.streak), 'day streak', c.tint],
+                [stats.adherence === null ? '–' : `${stats.adherence}%`, 'last 30 days', c.text],
+                [String(stats.taken), 'doses taken', c.text],
+              ] as const
+            ).map(([value, label, color], i) => (
+              <View key={label} style={[styles.stat, i < 2 && { borderRightWidth: 1, borderRightColor: c.border }]}>
+                <ThemedText type="number" style={{ color }}>
+                  {value}
+                </ThemedText>
+                <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 13 }}>
+                  {label}
+                </ThemedText>
+              </View>
+            ))}
           </View>
 
-          <Card>
+          <View>
             <View style={styles.monthHeader}>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Previous month"
-                hitSlop={12}
+                style={styles.arrow}
                 onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}>
-                <ThemedText style={styles.arrow}>‹</ThemedText>
+                <Chevron dir="left" color={c.text} />
               </Pressable>
-              <ThemedText type="smallBold" style={{ fontSize: 17 }}>
-                {monthLabel}
-              </ThemedText>
+              <ThemedText type="heading">{monthLabel}</ThemedText>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Next month"
-                hitSlop={12}
+                style={styles.arrow}
                 disabled={isCurrentMonth}
                 onPress={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}>
-                <ThemedText style={[styles.arrow, isCurrentMonth && { opacity: 0.25 }]}>›</ThemedText>
+                <Chevron dir="right" color={isCurrentMonth ? c.borderStrong : c.text} />
               </Pressable>
             </View>
 
             <View style={styles.grid}>
               {WEEKDAYS.map((w, i) => (
-                <View key={`h${i}`} style={styles.cell}>
-                  <ThemedText type="small" themeColor="textSecondary">
+                <View key={`h${i}`} style={[styles.cell, { height: 22 }]}>
+                  <ThemedText type="smallBold" themeColor="textSecondary" style={{ fontSize: 12 }}>
                     {w}
                   </ThemedText>
                 </View>
               ))}
-              {days.map((d, i) =>
-                d ? (
-                  <Pressable
-                    key={d.dateKey}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${d.dateKey}, ${d.state}`}
-                    accessibilityState={{ selected: d.dateKey === selected }}
-                    disabled={d.dateKey > today}
-                    onPress={() => setSelected(d.dateKey)}
-                    style={styles.cell}>
-                    <View
+              {days.map((d, i) => {
+                if (!d) return <View key={`e${i}`} style={styles.cell} />;
+                const isToday = d.dateKey === today;
+                const [bg, fg] = isToday ? [c.tint, c.onTint] : cellLook[d.state];
+                const future = d.dateKey > today;
+                return (
+                  <View key={d.dateKey} style={styles.cell}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${d.dateKey}, ${d.state}`}
+                      accessibilityState={{ selected: d.dateKey === selected }}
+                      disabled={future}
+                      onPress={() => setSelected(d.dateKey)}
                       style={[
-                        styles.dayCircle,
-                        d.dateKey === selected && { borderColor: c.tint, borderWidth: 2 },
+                        styles.day,
+                        { backgroundColor: bg },
+                        d.dateKey === selected && !isToday && { borderWidth: 2, borderColor: c.text },
                       ]}>
-                      <ThemedText
-                        type="small"
-                        style={{ opacity: d.dateKey > today ? 0.3 : 1, fontWeight: d.dateKey === today ? '800' : '500' }}>
+                      <ThemedText style={{ color: fg, fontSize: 15, lineHeight: 20, fontWeight: '600', opacity: future ? 0.5 : 1 }}>
                         {d.day}
                       </ThemedText>
-                      <View style={[styles.dot, { backgroundColor: stateColor[d.state] }]} />
-                    </View>
-                  </Pressable>
-                ) : (
-                  <View key={`e${i}`} style={styles.cell} />
-                ),
-              )}
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
 
             <View style={styles.legend}>
@@ -223,51 +242,56 @@ export default function HistoryScreen() {
                 [
                   ['perfect', 'All taken'],
                   ['partial', 'Some missed'],
-                  ['missed', 'All missed'],
+                  ['missed', 'Missed'],
+                  ['skipped', 'Skipped'],
                 ] as const
               ).map(([state, label]) => (
                 <View key={state} style={styles.legendItem}>
-                  <View style={[styles.dot, { backgroundColor: stateColor[state] }]} />
-                  <ThemedText type="small" themeColor="textSecondary">
+                  <View style={[styles.swatch, { backgroundColor: cellLook[state][0] }]} />
+                  <ThemedText type="small" themeColor="textSecondary" style={{ fontSize: 12 }}>
                     {label}
                   </ThemedText>
                 </View>
               ))}
             </View>
-          </Card>
+          </View>
 
-          <ThemedText type="smallBold" themeColor="textSecondary">
-            {selected === today ? 'Today' : selectedLabel}
-          </ThemedText>
+          <ThemedText type="label">{selected === today ? 'Today' : selectedLabel}</ThemedText>
           {daySummary.doses.length === 0 ? (
             <ThemedText type="small" themeColor="textSecondary">
               No scheduled doses on this day.
             </ThemedText>
           ) : (
-            <Card>
-              {daySummary.doses.map((d) => {
+            <ListGroup>
+              {daySummary.doses.map((d, i) => {
                 const med = medsById.get(d.medicationId);
                 const label = outcomeLabel[d.outcome];
                 return (
-                  <View key={`${d.medicationId}|${d.slot}`} style={styles.doseRow}>
-                    <ColorDot color={med?.color ?? c.textSecondary} />
-                    <ThemedText style={{ flex: 1 }}>
-                      {med?.name ?? 'Deleted medication'}
-                      <ThemedText themeColor="textSecondary"> · {formatTime(d.time)}</ThemedText>
-                    </ThemedText>
-                    <ThemedText type="smallBold" style={{ color: label.color }}>
-                      {label.text}
-                    </ThemedText>
-                  </View>
+                  <ListRow
+                    key={`${d.medicationId}|${d.slot}`}
+                    title={med?.name ?? 'Deleted medication'}
+                    detail={formatTime(d.time)}
+                    right={<StatusPill label={label.text} tone={label.tone} />}
+                    last={i === daySummary.doses.length - 1}
+                  />
                 );
               })}
-            </Card>
+            </ListGroup>
           )}
 
           <Card>
-            <ThemedText type="smallBold" style={{ fontSize: 17 }}>
-              Report for your doctor{plus ? '' : ' (Plus)'}
-            </ThemedText>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.two }}>
+              <ThemedText type="heading" style={{ flex: 1 }}>
+                Report for your doctor
+              </ThemedText>
+              {!plus && (
+                <View style={[styles.plusTag, { backgroundColor: c.gold }]}>
+                  <ThemedText type="smallBold" style={{ color: c.onGold, fontSize: 12, lineHeight: 16 }}>
+                    PLUS
+                  </ThemedText>
+                </View>
+              )}
+            </View>
             <ThemedText type="small" themeColor="textSecondary">
               A PDF of current medications, doses taken and missed, ready to share or print before an appointment.
             </ThemedText>
@@ -291,6 +315,7 @@ export default function HistoryScreen() {
                     ? `Create PDF${multiple ? ` for ${profilesById.get(reportPerson)?.name ?? ''}` : ''}`
                     : 'Unlock with Plus'
               }
+              variant={plus ? 'primary' : 'plus'}
               disabled={making || (plus === true && !allMeds.some((m) => m.profileId === reportPerson))}
               onPress={makeReport}
             />
@@ -298,9 +323,7 @@ export default function HistoryScreen() {
           </Card>
 
           <Card>
-            <ThemedText type="smallBold" style={{ fontSize: 17 }}>
-              Export your history
-            </ThemedText>
+            <ThemedText type="heading">Export your history</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               A spreadsheet (CSV) of every dose you've logged. It's your data, so this is always free.
             </ThemedText>
@@ -321,31 +344,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', justifyContent: 'center' },
   safeArea: { flex: 1, maxWidth: MaxContentWidth },
   scroll: {
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: 20,
     paddingTop: Spacing.three,
     paddingBottom: BottomTabInset + Spacing.four,
     gap: Spacing.three,
   },
-  statsRow: { flexDirection: 'row', gap: Spacing.two },
-  stat: { flex: 1, alignItems: 'flex-start' },
-  statValue: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
-  monthHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  arrow: { fontSize: 28, lineHeight: 32, paddingHorizontal: Spacing.two },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, alignItems: 'center', paddingVertical: 2 },
-  dayCircle: {
-    width: 40,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-  },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.three, marginTop: Spacing.one },
+  stats: { flexDirection: 'row', borderRadius: Radius.card, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 8 },
+  stat: { flex: 1, alignItems: 'center' },
+  monthHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: -8 },
+  arrow: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 4 },
+  cell: { width: `${100 / 7}%`, alignItems: 'center', paddingHorizontal: 2 },
+  day: { alignSelf: 'stretch', height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 8, marginTop: 14 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  swatch: { width: 12, height: 12, borderRadius: 4 },
+  plusTag: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: Radius.pill },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
-  doseRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 4 },
 });

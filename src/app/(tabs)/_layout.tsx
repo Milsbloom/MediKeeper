@@ -7,9 +7,11 @@ export default function TabsLayout() {
 
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      backgroundColor={colors.backgroundElement}
+      indicatorColor={colors.tintSoft}
+      tintColor={colors.tint}
+      iconColor={{ default: colors.textSecondary, selected: colors.tint }}
+      labelStyle={{ default: { color: colors.textSecondary }, selected: { color: colors.tint } }}>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'checklist', selected: 'checklist' }} md="today" />
