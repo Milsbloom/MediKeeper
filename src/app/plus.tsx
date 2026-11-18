@@ -1,10 +1,12 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, Card } from '@/components/ui';
+import { PRIVACY_URL, TERMS_URL } from '@/constants/links';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { buyPlan, devSetPlus, getPlans, paymentsAvailable, restorePlus, usePlus, type Plan } from '@/lib/plus';
@@ -191,6 +193,18 @@ export default function PlusScreen() {
           hours before the end of the current period, and can be managed in your {store} account settings. The
           lifetime option is a single payment.
         </ThemedText>
+        <View style={styles.links}>
+          <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)} hitSlop={8}>
+            <ThemedText type="small" style={{ color: c.tint }}>
+              Terms of use
+            </ThemedText>
+          </Pressable>
+          <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)} hitSlop={8}>
+            <ThemedText type="small" style={{ color: c.tint }}>
+              Privacy policy
+            </ThemedText>
+          </Pressable>
+        </View>
         <Button label="Not now" variant="secondary" onPress={() => router.back()} />
       </ScrollView>
     </ThemedView>
@@ -204,5 +218,6 @@ const styles = StyleSheet.create({
   benefit: { flexDirection: 'row', gap: Spacing.three, alignItems: 'flex-start' },
   plan: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderRadius: 16, padding: Spacing.three },
   radio: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  links: { flexDirection: 'row', justifyContent: 'center', gap: Spacing.four },
   radioDot: { width: 12, height: 12, borderRadius: 6 },
 });

@@ -1,11 +1,14 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import Constants from 'expo-constants';
+import * as WebBrowser from 'expo-web-browser';
 import { Linking, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Button, Card, Chip, ColorDot } from '@/components/ui';
+import { PRIVACY_URL, TERMS_URL } from '@/constants/links';
 import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,7 +16,9 @@ import { DEFAULT_SETTINGS, getSettings, updateSettings, type Settings } from '@/
 import { FREE_PROFILE_LIMIT, usePlus } from '@/lib/plus';
 import {
   ensureReminderPermission,
+  getOnTimeState,
   getReminderPermission,
+  requestOnTimeReminders,
   sendTestReminder,
   type PermissionState,
 } from '@/lib/reminders';
@@ -33,6 +38,7 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [permission, setPermission] = useState<PermissionState>('undetermined');
   const [testSent, setTestSent] = useState(false);
+  const [onTime, setOnTime] = useState<'granted' | 'denied' | 'unneeded'>('unneeded');
   const { profiles } = useProfiles();
   const plus = usePlus();
 
@@ -47,6 +53,7 @@ export default function SettingsScreen() {
   const load = useCallback(async () => {
     setSettings(await getSettings());
     setPermission(await getReminderPermission().catch(() => 'denied' as const));
+    setOnTime(await getOnTimeState());
   }, []);
 
   useFocusEffect(
@@ -130,6 +137,24 @@ export default function SettingsScreen() {
             </Card>
           )}
 
+          {permission === 'granted' && onTime === 'denied' && (
+            <Card>
+              <ThemedText type="smallBold" style={{ color: c.warning }}>
+                Reminders may arrive a few minutes late
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                Allow "Alarms & reminders" for MediKeeper so Android shows each reminder right on time.
+              </ThemedText>
+              <Button
+                label="Allow on-time reminders"
+                onPress={async () => {
+                  await requestOnTimeReminders();
+                  await load();
+                }}
+              />
+            </Card>
+          )}
+
           <Card>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
@@ -198,6 +223,20 @@ export default function SettingsScreen() {
             Reminders are scheduled on this phone and work without internet. If your phone uses battery
             saving, allow MediKeeper to run in the background so reminders aren't delayed.
           </ThemedText>
+
+          <Card>
+            <ThemedText type="smallBold" style={{ fontSize: 17 }}>
+              About
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              MediKeeper {Constants.expoConfig?.version ?? ''}. Your data stays on this phone. MediKeeper is a reminder
+              tool and does not give medical advice.
+            </ThemedText>
+            <View style={styles.wrap}>
+              <Button label="Privacy policy" variant="secondary" onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)} />
+              <Button label="Terms of use" variant="secondary" onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)} />
+            </View>
+          </Card>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>

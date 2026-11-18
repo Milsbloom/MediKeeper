@@ -19,7 +19,12 @@ export {
   getLastNotificationResponseAsync,
 } from 'expo-notifications/build/NotificationsEmitter';
 export { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler';
-export { getPermissionsAsync, requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
+export {
+  getExactAlarmPermissionsAsync,
+  getPermissionsAsync,
+  requestExactAlarmPermissionsAsync,
+  requestPermissionsAsync,
+} from 'expo-notifications/build/NotificationPermissions';
 export { AndroidImportance } from 'expo-notifications/build/NotificationChannelManager.types';
 export { SchedulableTriggerInputTypes } from 'expo-notifications/build/Notifications.types';
 export type { NotificationResponse } from 'expo-notifications/build/Notifications.types';
