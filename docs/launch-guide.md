@@ -37,7 +37,7 @@ eas env:create --name EXPO_PUBLIC_REVENUECAT_ANDROID_KEY --value goog_xxx --envi
 6. **RevenueCat**: add a Play Store app with package `com.milsbloom.medikeeper`, upload the Google service account
    JSON (RevenueCat's "Google Play service credentials" guide walks through it), import the three products, and
    attach them to the `plus` entitlement and the `default` offering, alongside the Test Store ones.
-7. **Store listing**: paste the text from `docs/store-listing.md`. Upload the icon (`assets/images/icon.png`, 512×512),
+7. **Store listing**: paste the text from `docs/store-listing.md`. Upload the icon (`store-assets/play-icon-512.png`, 512×512),
    the feature graphic `store-assets/play-feature-graphic.png`, and the phone screenshots `store-assets/play-*.png`.
 8. **App content**: privacy policy URL, ads (none), content rating, target audience (18+), data safety and
    health apps declarations. Answers are in `docs/store-listing.md`.

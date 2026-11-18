@@ -149,15 +149,15 @@ export function buildReportHtml(opts: {
 <html><head><meta charset="utf-8">
 <style>
   body { font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; color: #111; font-size: 11pt; margin: 0; }
-  h1 { font-size: 20pt; margin: 0 0 4px; color: #1E3A8A; }
-  h2 { font-size: 13pt; margin: 22px 0 8px; color: #1E3A8A; border-bottom: 1px solid #CBD5E1; padding-bottom: 4px; }
+  h1 { font-size: 20pt; margin: 0 0 4px; color: #1E5B4A; }
+  h2 { font-size: 13pt; margin: 22px 0 8px; color: #1E5B4A; border-bottom: 1px solid #CFC9BA; padding-bottom: 4px; }
   .sub { color: #475569; margin: 0; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #E2E8F0; vertical-align: top; }
-  th { background: #F1F5F9; font-size: 9.5pt; text-transform: uppercase; letter-spacing: .03em; color: #334155; }
+  th { background: #F6F4EE; font-size: 9.5pt; text-transform: uppercase; letter-spacing: .03em; color: #334155; }
   td.n, th.n { text-align: right; }
   .cards { display: flex; gap: 10px; margin-top: 14px; }
-  .card { flex: 1; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px; }
+  .card { flex: 1; border: 1px solid #CFC9BA; border-radius: 8px; padding: 10px; }
   .big { font-size: 20pt; font-weight: 700; }
   .muted { color: #64748B; font-size: 9.5pt; }
   .foot { margin-top: 26px; color: #64748B; font-size: 9pt; }
